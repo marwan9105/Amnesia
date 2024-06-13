@@ -1,17 +1,12 @@
-﻿// CHANGE LOG
-// 
-// CHANGES || version VERSION
-//
-// "Enable/Disable Headbob, Changed look rotations - should result in reduced camera jitters" || version 1.0.1
-
+﻿
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
 #if UNITY_EDITOR
-    using UnityEditor;
-    using System.Net;
+using UnityEditor;
+using System.Net;
 #endif
 
 public class FirstPersonController : MonoBehaviour
@@ -44,6 +39,7 @@ public class FirstPersonController : MonoBehaviour
     public bool enableZoom = true;
     public bool holdToZoom = false;
     public KeyCode zoomKey = KeyCode.Mouse1;
+    public KeyCode xboxZoomButton = KeyCode.JoystickButton5; // Exemple : Bouton LB sur Xbox
     public float zoomFOV = 30f;
     public float zoomStepTime = 5f;
 
@@ -67,6 +63,7 @@ public class FirstPersonController : MonoBehaviour
     public bool enableSprint = true;
     public bool unlimitedSprint = false;
     public KeyCode sprintKey = KeyCode.LeftShift;
+    public KeyCode xboxSprintButton = KeyCode.JoystickButton8; // Exemple : Bouton LS sur Xbox
     public float sprintSpeed = 7f;
     public float sprintDuration = 5f;
     public float sprintCooldown = .5f;
@@ -96,6 +93,7 @@ public class FirstPersonController : MonoBehaviour
 
     public bool enableJump = true;
     public KeyCode jumpKey = KeyCode.Space;
+    public KeyCode xboxJumpButton = KeyCode.JoystickButton0; // Exemple : Bouton A sur Xbox
     public float jumpPower = 5f;
 
     // Internal Variables
@@ -108,6 +106,7 @@ public class FirstPersonController : MonoBehaviour
     public bool enableCrouch = true;
     public bool holdToCrouch = true;
     public KeyCode crouchKey = KeyCode.LeftControl;
+    public KeyCode xboxCrouchButton = KeyCode.JoystickButton1; // Exemple : Bouton B sur Xbox
     public float crouchHeight = .75f;
     public float speedReduction = .5f;
 
@@ -128,6 +127,7 @@ public class FirstPersonController : MonoBehaviour
     // Internal Variables
     private Vector3 jointOriginalPos;
     private float timer = 0;
+
 
     #endregion
 
@@ -170,7 +170,7 @@ public class FirstPersonController : MonoBehaviour
 
         sprintBarCG = GetComponentInChildren<CanvasGroup>();
 
-        if(useSprintBar)
+        if (useSprintBar)
         {
             sprintBarBG.gameObject.SetActive(true);
             sprintBar.gameObject.SetActive(true);
@@ -184,7 +184,7 @@ public class FirstPersonController : MonoBehaviour
             sprintBarBG.rectTransform.sizeDelta = new Vector3(sprintBarWidth, sprintBarHeight, 0f);
             sprintBar.rectTransform.sizeDelta = new Vector3(sprintBarWidth - 2, sprintBarHeight - 2, 0f);
 
-            if(hideBarWhenFull)
+            if (hideBarWhenFull)
             {
                 sprintBarCG.alpha = 0;
             }
@@ -195,28 +195,88 @@ public class FirstPersonController : MonoBehaviour
             sprintBar.gameObject.SetActive(false);
         }
 
+        // Handling sprint input for keyboard and Xbox controller
+        if (Input.GetKeyDown(sprintKey) || Input.GetKeyDown(xboxSprintButton))
+        {
+            if (!isSprintCooldown && sprintRemaining > 0)
+            {
+                isSprinting = true;
+                sprintBarCG.alpha = 1;
+            }
+        }
+        if (Input.GetKeyUp(sprintKey) || Input.GetKeyUp(xboxSprintButton))
+        {
+            isSprinting = false;
+        }
+
+        // Update sprint bar if using it
+        if (useSprintBar)
+        {
+            if (isSprinting)
+            {
+                sprintRemaining -= Time.deltaTime;
+                sprintBar.fillAmount = sprintRemaining / sprintDuration;
+
+                if (sprintRemaining <= 0)
+                {
+                    isSprinting = false;
+                    isSprintCooldown = true;
+                    sprintCooldownReset = sprintCooldown;
+                }
+            }
+            else if (sprintRemaining < sprintDuration && !isSprintCooldown)
+            {
+                sprintRemaining += Time.deltaTime;
+                sprintBar.fillAmount = sprintRemaining / sprintDuration;
+
+                if (sprintRemaining >= sprintDuration)
+                {
+                    sprintBarCG.alpha = hideBarWhenFull ? 0 : 1;
+                }
+            }
+            else if (isSprintCooldown)
+            {
+                sprintCooldownReset -= Time.deltaTime;
+                if (sprintCooldownReset <= 0)
+                {
+                    isSprintCooldown = false;
+                }
+            }
+        }
+
         #endregion
+
     }
 
     float camRotation;
 
     private void Update()
     {
-        #region Camera
+       #region Camera
 
         // Control camera movement
-        if(cameraCanMove)
+        if (cameraCanMove)
         {
-            yaw = transform.localEulerAngles.y + Input.GetAxis("Mouse X") * mouseSensitivity;
+            // Mouse input
+            float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity;
+            float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity;
+
+            // Joystick input
+            // Joystick input
+            float joystickX = Input.GetAxisRaw("Joystick X") * mouseSensitivity;
+            float joystickY = Input.GetAxisRaw("Joystick Y") * mouseSensitivity;
+
+            // Combine mouse and joystick inputs
+            yaw = transform.localEulerAngles.y + mouseX + joystickX;
 
             if (!invertCamera)
             {
-                pitch -= mouseSensitivity * Input.GetAxis("Mouse Y");
+                pitch -= (mouseY + joystickY);
             }
             else
             {
                 // Inverted Y
-                pitch += mouseSensitivity * Input.GetAxis("Mouse Y");
+                pitch += (mouseY + joystickY);
             }
 
             // Clamp pitch between lookAngle
@@ -230,40 +290,33 @@ public class FirstPersonController : MonoBehaviour
 
         if (enableZoom)
         {
-            // Changes isZoomed when key is pressed
-            // Behavior for toogle zoom
-            if(Input.GetKeyDown(zoomKey) && !holdToZoom && !isSprinting)
+            // Changes isZoomed when key or button is pressed
+            // Behavior for toggle zoom
+            if ((Input.GetKeyDown(zoomKey) || Input.GetKeyDown(xboxZoomButton)) && !holdToZoom && !isSprinting)
             {
-                if (!isZoomed)
-                {
-                    isZoomed = true;
-                }
-                else
-                {
-                    isZoomed = false;
-                }
+                isZoomed = !isZoomed;
             }
 
-            // Changes isZoomed when key is pressed
+            // Changes isZoomed when key or button is pressed
             // Behavior for hold to zoom
-            if(holdToZoom && !isSprinting)
+            if (holdToZoom && !isSprinting)
             {
-                if(Input.GetKeyDown(zoomKey))
+                if (Input.GetKeyDown(zoomKey) || Input.GetKeyDown(xboxZoomButton))
                 {
                     isZoomed = true;
                 }
-                else if(Input.GetKeyUp(zoomKey))
+                else if (Input.GetKeyUp(zoomKey) || Input.GetKeyUp(xboxZoomButton))
                 {
                     isZoomed = false;
                 }
             }
 
-            // Lerps camera.fieldOfView to allow for a smooth transistion
-            if(isZoomed)
+            // Lerps camera.fieldOfView to allow for a smooth transition
+            if (isZoomed)
             {
                 playerCamera.fieldOfView = Mathf.Lerp(playerCamera.fieldOfView, zoomFOV, zoomStepTime * Time.deltaTime);
             }
-            else if(!isZoomed && !isSprinting)
+            else if (!isZoomed && !isSprinting)
             {
                 playerCamera.fieldOfView = Mathf.Lerp(playerCamera.fieldOfView, fov, zoomStepTime * Time.deltaTime);
             }
@@ -272,17 +325,28 @@ public class FirstPersonController : MonoBehaviour
         #endregion
         #endregion
 
-        #region Sprint
+       #region Sprint
 
-        if(enableSprint)
+        if (enableSprint)
         {
-            if(isSprinting)
+            bool sprintInput = Input.GetKey(sprintKey) || Input.GetKey(xboxSprintButton);
+
+            if (sprintInput && !isSprintCooldown && sprintRemaining > 0)
+            {
+                isSprinting = true;
+            }
+            else
+            {
+                isSprinting = false;
+            }
+
+            if (isSprinting)
             {
                 isZoomed = false;
                 playerCamera.fieldOfView = Mathf.Lerp(playerCamera.fieldOfView, sprintFOV, sprintFOVStepTime * Time.deltaTime);
 
                 // Drain sprint remaining while sprinting
-                if(!unlimitedSprint)
+                if (!unlimitedSprint)
                 {
                     sprintRemaining -= 1 * Time.deltaTime;
                     if (sprintRemaining <= 0)
@@ -300,7 +364,7 @@ public class FirstPersonController : MonoBehaviour
 
             // Handles sprint cooldown 
             // When sprint remaining == 0 stops sprint ability until hitting cooldown
-            if(isSprintCooldown)
+            if (isSprintCooldown)
             {
                 sprintCooldown -= 1 * Time.deltaTime;
                 if (sprintCooldown <= 0)
@@ -314,7 +378,7 @@ public class FirstPersonController : MonoBehaviour
             }
 
             // Handles sprintBar 
-            if(useSprintBar && !unlimitedSprint)
+            if (useSprintBar && !unlimitedSprint)
             {
                 float sprintRemainingPercent = sprintRemaining / sprintDuration;
                 sprintBar.transform.localScale = new Vector3(sprintRemainingPercent, 1f, 1f);
@@ -324,9 +388,8 @@ public class FirstPersonController : MonoBehaviour
         #endregion
 
         #region Jump
-
         // Gets input and calls jump method
-        if(enableJump && Input.GetKeyDown(jumpKey) && isGrounded)
+        if (enableJump && isGrounded && (Input.GetKeyDown(jumpKey) || Input.GetKeyDown(xboxJumpButton)))
         {
             Jump();
         }
@@ -337,17 +400,17 @@ public class FirstPersonController : MonoBehaviour
 
         if (enableCrouch)
         {
-            if(Input.GetKeyDown(crouchKey) && !holdToCrouch)
+            if((Input.GetKeyDown(crouchKey) || Input.GetKeyDown(xboxCrouchButton)) && !holdToCrouch)
             {
                 Crouch();
             }
             
-            if(Input.GetKeyDown(crouchKey) && holdToCrouch)
+            if((Input.GetKeyDown(crouchKey) || Input.GetKeyDown(xboxCrouchButton)) && holdToCrouch)
             {
                 isCrouched = false;
                 Crouch();
             }
-            else if(Input.GetKeyUp(crouchKey) && holdToCrouch)
+            else if((Input.GetKeyUp(crouchKey) || Input.GetKeyUp(xboxCrouchButton)) && holdToCrouch)
             {
                 isCrouched = true;
                 Crouch();
@@ -371,7 +434,7 @@ public class FirstPersonController : MonoBehaviour
         if (playerCanMove)
         {
             // Calculate how fast we should be moving
-            Vector3 targetVelocity = new Vector3(Input.GetAxis("Horizontal"), 0, Input.GetAxis("Vertical"));
+            Vector3 targetVelocity = new Vector3(Input.GetAxis("Horizontal") + Input.GetAxis("Horizontal"), 0, Input.GetAxis("Vertical") + Input.GetAxis("Vertical"));
 
             // Checks if player is walking and isGrounded
             // Will allow head bob
@@ -384,8 +447,8 @@ public class FirstPersonController : MonoBehaviour
                 isWalking = false;
             }
 
-            // All movement calculations shile sprint is active
-            if (enableSprint && Input.GetKey(sprintKey) && sprintRemaining > 0f && !isSprintCooldown)
+            // All movement calculations while sprint is active
+            if (enableSprint && (Input.GetKey(sprintKey) || Input.GetKey(xboxSprintButton)) && sprintRemaining > 0f && !isSprintCooldown)
             {
                 targetVelocity = transform.TransformDirection(targetVelocity) * sprintSpeed;
 
@@ -396,7 +459,7 @@ public class FirstPersonController : MonoBehaviour
                 velocityChange.z = Mathf.Clamp(velocityChange.z, -maxVelocityChange, maxVelocityChange);
                 velocityChange.y = 0;
 
-                // Player is only moving when valocity change != 0
+                // Player is only moving when velocity change != 0
                 // Makes sure fov change only happens during movement
                 if (velocityChange.x != 0 || velocityChange.z != 0)
                 {
@@ -600,6 +663,10 @@ public class FirstPersonController : MonoBehaviour
         GUI.enabled = fpc.enableZoom;
         fpc.holdToZoom = EditorGUILayout.ToggleLeft(new GUIContent("Hold to Zoom", "Requires the player to hold the zoom key instead if pressing to zoom and unzoom."), fpc.holdToZoom);
         fpc.zoomKey = (KeyCode)EditorGUILayout.EnumPopup(new GUIContent("Zoom Key", "Determines what key is used to zoom."), fpc.zoomKey);
+
+        // Ajoutez cette ligne pour spécifier le bouton de zoom de la manette Xbox
+        fpc.xboxZoomButton = (KeyCode)EditorGUILayout.EnumPopup(new GUIContent("Xbox Zoom Button", "Détermine le bouton utilisé pour le zoom sur la manette Xbox."), fpc.xboxZoomButton);
+
         fpc.zoomFOV = EditorGUILayout.Slider(new GUIContent("Zoom FOV", "Determines the field of view the camera zooms to."), fpc.zoomFOV, .1f, fpc.fov);
         fpc.zoomStepTime = EditorGUILayout.Slider(new GUIContent("Step Time", "Determines how fast the FOV transitions while zooming in."), fpc.zoomStepTime, .1f, 10f);
         GUI.enabled = true;
@@ -618,6 +685,11 @@ public class FirstPersonController : MonoBehaviour
 
         GUI.enabled = fpc.playerCanMove;
         fpc.walkSpeed = EditorGUILayout.Slider(new GUIContent("Walk Speed", "Determines how fast the player will move while walking."), fpc.walkSpeed, .1f, fpc.sprintSpeed);
+
+        // Ajoutez ces lignes pour spécifier les boutons de marche et de course de la manette Xbox
+        fpc.xboxSprintButton = (KeyCode)EditorGUILayout.EnumPopup(new GUIContent("Xbox Sprint Button", "Détermine le bouton utilisé pour la course sur la manette Xbox."), fpc.xboxSprintButton);
+        fpc.xboxCrouchButton = (KeyCode)EditorGUILayout.EnumPopup(new GUIContent("Xbox Crouch Button", "Détermine le bouton utilisé pour se baisser sur la manette Xbox."), fpc.xboxCrouchButton);
+
         GUI.enabled = true;
 
         EditorGUILayout.Space();
@@ -632,6 +704,9 @@ public class FirstPersonController : MonoBehaviour
         fpc.unlimitedSprint = EditorGUILayout.ToggleLeft(new GUIContent("Unlimited Sprint", "Determines if 'Sprint Duration' is enabled. Turning this on will allow for unlimited sprint."), fpc.unlimitedSprint);
         fpc.sprintKey = (KeyCode)EditorGUILayout.EnumPopup(new GUIContent("Sprint Key", "Determines what key is used to sprint."), fpc.sprintKey);
         fpc.sprintSpeed = EditorGUILayout.Slider(new GUIContent("Sprint Speed", "Determines how fast the player will move while sprinting."), fpc.sprintSpeed, fpc.walkSpeed, 20f);
+
+        // Ajoutez ces lignes pour spécifier les boutons de sprint de la manette Xbox
+        fpc.xboxSprintButton = (KeyCode)EditorGUILayout.EnumPopup(new GUIContent("Xbox Sprint Button", "Détermine le bouton utilisé pour sprinter sur la manette Xbox."), fpc.xboxSprintButton);
 
         //GUI.enabled = !fpc.unlimitedSprint;
         fpc.sprintDuration = EditorGUILayout.Slider(new GUIContent("Sprint Duration", "Determines how long the player can sprint while unlimited sprint is disabled."), fpc.sprintDuration, 1f, 20f);
@@ -686,6 +761,10 @@ public class FirstPersonController : MonoBehaviour
 
         GUI.enabled = fpc.enableJump;
         fpc.jumpKey = (KeyCode)EditorGUILayout.EnumPopup(new GUIContent("Jump Key", "Determines what key is used to jump."), fpc.jumpKey);
+
+        // Ajoutez ces lignes pour spécifier le bouton de saut de la manette Xbox
+        fpc.xboxJumpButton = (KeyCode)EditorGUILayout.EnumPopup(new GUIContent("Xbox Jump Button", "Détermine le bouton utilisé pour sauter sur la manette Xbox."), fpc.xboxJumpButton);
+
         fpc.jumpPower = EditorGUILayout.Slider(new GUIContent("Jump Power", "Determines how high the player will jump."), fpc.jumpPower, .1f, 20f);
         GUI.enabled = true;
 
@@ -702,6 +781,10 @@ public class FirstPersonController : MonoBehaviour
         GUI.enabled = fpc.enableCrouch;
         fpc.holdToCrouch = EditorGUILayout.ToggleLeft(new GUIContent("Hold To Crouch", "Requires the player to hold the crouch key instead if pressing to crouch and uncrouch."), fpc.holdToCrouch);
         fpc.crouchKey = (KeyCode)EditorGUILayout.EnumPopup(new GUIContent("Crouch Key", "Determines what key is used to crouch."), fpc.crouchKey);
+
+        // Ajoutez ces lignes pour spécifier le bouton de raccourci de la manette Xbox pour s'accroupir
+        fpc.xboxCrouchButton = (KeyCode)EditorGUILayout.EnumPopup(new GUIContent("Xbox Crouch Button", "Détermine le bouton utilisé pour s'accroupir sur la manette Xbox."), fpc.xboxCrouchButton);
+
         fpc.crouchHeight = EditorGUILayout.Slider(new GUIContent("Crouch Height", "Determines the y scale of the player object when crouched."), fpc.crouchHeight, .1f, 1);
         fpc.speedReduction = EditorGUILayout.Slider(new GUIContent("Speed Reduction", "Determines the percent 'Walk Speed' is reduced by. 1 being no reduction, and .5 being half."), fpc.speedReduction, .1f, 1);
         GUI.enabled = true;

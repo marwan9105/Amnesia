@@ -51,5 +51,5 @@
         "temp/": true,
         "Temp/": true
     },
-    "dotnet.defaultSolution": "jeu.sln"
+    "dotnet.defaultSolution": "Amnesia.sln"
 }
